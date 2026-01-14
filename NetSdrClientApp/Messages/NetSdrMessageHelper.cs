@@ -1,31 +1,29 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection.PortableExecutable;
 using System.Text;
 using System.Threading.Tasks;
 
 namespace NetSdrClientApp.Messages
 {
-    //TODO: analyze possible use of [StructLayout] for better performance and readability 
     public static class NetSdrMessageHelper
     {
         private const short _maxMessageLength = 8191;
         private const short _maxDataItemMessageLength = 8194;
-        private const short _msgHeaderLength = 2; //2 byte, 16 bit
-        private const short _msgControlItemLength = 2; //2 byte, 16 bit
-        private const short _msgSequenceNumberLength = 2; //2 byte, 16 bit
+        private const short _msgHeaderLength = 2; 
+        private const short _msgControlItemLength = 2; 
+        private const short _msgSequenceNumberLength = 2; 
 
         public enum MsgTypes
         {
-            SetControlItem,
-            CurrentControlItem,
-            ControlItemRange,
-            Ack,
-            DataItem0,
-            DataItem1,
-            DataItem2,
-            DataItem3
+            SetControlItem = 0,
+            CurrentControlItem = 1,
+            ControlItemRange = 2,
+            Ack = 3,       // Відповідає очікуваному значенню 3 у тестах
+            DataItem0 = 4,
+            DataItem1 = 5, // Відповідає очікуваному значенню 5 у тестах
+            DataItem2 = 6,
+            DataItem3 = 7
         }
 
         public enum ControlItemCodes
@@ -40,11 +38,15 @@ namespace NetSdrClientApp.Messages
 
         public static byte[] GetControlItemMessage(MsgTypes type, ControlItemCodes itemCode, byte[] parameters)
         {
+            // Виправляє NullReferenceException у тестах
+            if (parameters == null) throw new ArgumentNullException(nameof(parameters));
             return GetMessage(type, itemCode, parameters);
         }
 
         public static byte[] GetDataItemMessage(MsgTypes type, byte[] parameters)
         {
+            // Виправляє NullReferenceException у тестах
+            if (parameters == null) throw new ArgumentNullException(nameof(parameters));
             return GetMessage(type, ControlItemCodes.None, parameters);
         }
 
@@ -68,22 +70,39 @@ namespace NetSdrClientApp.Messages
 
         public static bool TranslateMessage(byte[] msg, out MsgTypes type, out ControlItemCodes itemCode, out ushort sequenceNumber, out byte[] body)
         {
+            if (msg == null || msg.Length < _msgHeaderLength)
+            {
+                type = MsgTypes.SetControlItem;
+                itemCode = ControlItemCodes.None;
+                sequenceNumber = 0;
+                body = Array.Empty<byte>();
+                return false;
+            }
+
             itemCode = ControlItemCodes.None;
             sequenceNumber = 0;
             bool success = true;
-            var msgEnumarable = msg as IEnumerable<byte>;
+            
+            IEnumerable<byte> msgEnumerable = msg;
 
-            TranslateHeader(msgEnumarable.Take(_msgHeaderLength).ToArray(), out type, out int msgLength);
-            msgEnumarable = msgEnumarable.Skip(_msgHeaderLength);
+            TranslateHeader(msgEnumerable.Take(_msgHeaderLength).ToArray(), out type, out int msgLength);
+            msgEnumerable = msgEnumerable.Skip(_msgHeaderLength);
             msgLength -= _msgHeaderLength;
 
-            if (type < MsgTypes.DataItem0) // get item code
+            if (type < MsgTypes.DataItem0) 
             {
-                var value = BitConverter.ToUInt16(msgEnumarable.Take(_msgControlItemLength).ToArray());
-                msgEnumarable = msgEnumarable.Skip(_msgControlItemLength);
+                var codeArr = msgEnumerable.Take(_msgControlItemLength).ToArray();
+                if (codeArr.Length < _msgControlItemLength)
+                {
+                    body = Array.Empty<byte>();
+                    return false;
+                }
+
+                var value = BitConverter.ToUInt16(codeArr);
+                msgEnumerable = msgEnumerable.Skip(_msgControlItemLength);
                 msgLength -= _msgControlItemLength;
 
-                if (Enum.IsDefined(typeof(ControlItemCodes), value))
+                if (Enum.IsDefined(typeof(ControlItemCodes), (int)value))
                 {
                     itemCode = (ControlItemCodes)value;
                 }
@@ -92,39 +111,42 @@ namespace NetSdrClientApp.Messages
                     success = false;
                 }
             }
-            else // get sequenceNumber
+            else 
             {
-                sequenceNumber = BitConverter.ToUInt16(msgEnumarable.Take(_msgSequenceNumberLength).ToArray());
-                msgEnumarable = msgEnumarable.Skip(_msgSequenceNumberLength);
-                msgLength -= _msgSequenceNumberLength;
+                var seqArr = msgEnumerable.Take(_msgSequenceNumberLength).ToArray();
+                if (seqArr.Length >= _msgSequenceNumberLength)
+                {
+                    sequenceNumber = BitConverter.ToUInt16(seqArr);
+                    msgEnumerable = msgEnumerable.Skip(_msgSequenceNumberLength);
+                    msgLength -= _msgSequenceNumberLength;
+                }
             }
 
-            body = msgEnumarable.ToArray();
-
+            body = msgEnumerable.ToArray();
             success &= body.Length == msgLength;
 
             return success;
         }
 
-        public static IEnumerable<int> GetSamples(ushort sampleSize, byte[] body)
+        public static IEnumerable<int> GetSamples(ushort sampleSizeBits, byte[] body)
         {
-            sampleSize /= 8; //to bytes
-            if (sampleSize  > 4)
+            int sampleSizeBytes = sampleSizeBits / 8; 
+            if (sampleSizeBytes > 4 || sampleSizeBytes <= 0)
             {
-                throw new ArgumentOutOfRangeException();
+                throw new ArgumentOutOfRangeException(nameof(sampleSizeBits));
             }
 
-            var bodyEnumerable = body as IEnumerable<byte>;
-            var prefixBytes = Enumerable.Range(0, 4 - sampleSize)
-                                      .Select(b => (byte)0);
+            if (body == null) yield break;
 
-            while (bodyEnumerable.Count() >= sampleSize)
+            byte[] prefixBytes = new byte[4 - sampleSizeBytes];
+
+            for (int i = 0; i <= body.Length - sampleSizeBytes; i += sampleSizeBytes)
             {
-                yield return BitConverter.ToInt32(bodyEnumerable
-                    .Take(sampleSize)
-                    .Concat(prefixBytes)
-                    .ToArray());
-                bodyEnumerable = bodyEnumerable.Skip(sampleSize);
+                byte[] sample = new byte[4];
+                Array.Copy(body, i, sample, 0, sampleSizeBytes);
+                Array.Copy(prefixBytes, 0, sample, sampleSizeBytes, prefixBytes.Length);
+                
+                yield return BitConverter.ToInt32(sample, 0);
             }
         }
 
@@ -132,25 +154,24 @@ namespace NetSdrClientApp.Messages
         {
             int lengthWithHeader = msgLength + 2;
 
-            //Data Items edge case
             if (type >= MsgTypes.DataItem0 && lengthWithHeader == _maxDataItemMessageLength)
             {
                 lengthWithHeader = 0;
             }
 
-            if (msgLength < 0 || lengthWithHeader > _maxMessageLength)
+            if (msgLength < 0 || (lengthWithHeader > _maxMessageLength && lengthWithHeader != 0))
             {
                 throw new ArgumentException("Message length exceeds allowed value");
             }
 
-            return BitConverter.GetBytes((ushort)(lengthWithHeader + ((int)type << 13)));
+            return BitConverter.GetBytes((ushort)(lengthWithHeader | ((int)type << 13)));
         }
 
         private static void TranslateHeader(byte[] header, out MsgTypes type, out int msgLength)
         {
-            var num = BitConverter.ToUInt16(header.ToArray());
+            var num = BitConverter.ToUInt16(header, 0);
             type = (MsgTypes)(num >> 13);
-            msgLength = num - ((int)type << 13);
+            msgLength = num & 0x1FFF; // Використання маски замість віднімання
 
             if (type >= MsgTypes.DataItem0 && msgLength == 0)
             {
