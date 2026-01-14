@@ -1,9 +1,9 @@
 using System;
+using System.Linq;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Linq;
 
 namespace NetSdrClientApp.Networking
 {
@@ -35,7 +35,7 @@ namespace NetSdrClientApp.Networking
                 _stream = _tcpClient.GetStream();
                 _ = StartListeningAsync();
             }
-            catch (Exception) { /* Log error */ }
+            catch (Exception ex) { Console.WriteLine(ex.Message); }
         }
 
         public void Disconnect()
@@ -60,8 +60,7 @@ namespace NetSdrClientApp.Networking
 
         public async Task SendMessageAsync(string str)
         {
-            var data = Encoding.UTF8.GetBytes(str);
-            await SendMessageAsync(data);
+            await SendMessageAsync(Encoding.UTF8.GetBytes(str));
         }
 
         private async Task StartListeningAsync()
