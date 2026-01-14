@@ -80,11 +80,12 @@ namespace NetSdrClientApp.Networking
         }
 
         public void Dispose()
-        {
-            _cts?.Dispose();
-            _tcpClient?.Dispose();
-            _stream?.Dispose();
-            GC.SuppressFinalize(this);
-        }
+{
+    _cts?.Cancel();
+    _cts?.Dispose(); 
+    _tcpClient?.Dispose();
+    _stream?.Dispose();
+    GC.SuppressFinalize(this);
+}
     }
 }
