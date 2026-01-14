@@ -69,7 +69,6 @@ namespace NetSdrClientAppTests
         [Test]
         public void GetControlItemMessage_WithEmptyParameters_ReturnsMinimumLength()
         {
-            // Використовуємо Ack замість Request, щоб уникнути помилки компіляції
             var type = NetSdrMessageHelper.MsgTypes.Ack;
             var code = NetSdrMessageHelper.ControlItemCodes.ReceiverState;
 
@@ -90,11 +89,25 @@ namespace NetSdrClientAppTests
         [Test]
         public void GetControlItemMessage_LargePayload_CalculatesLengthCorrectly()
         {
-            // Використовуємо Ack замість Set
             var type = NetSdrMessageHelper.MsgTypes.Ack;
             int largeSize = 8000; 
             
             byte[] msg = NetSdrMessageHelper.GetControlItemMessage(type, NetSdrMessageHelper.ControlItemCodes.ReceiverState, new byte[largeSize]);
 
             var num = BitConverter.ToUInt16(msg.Take(2).ToArray());
-            var actualLength = num & 0x1FFF;
+            var actualLength = num & 0x1FFF; 
+
+            Assert.That(msg.Length, Is.EqualTo(actualLength));
+        }
+
+        [Test]
+        public void MsgTypes_Enum_HasExpectedValues()
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That((int)NetSdrMessageHelper.MsgTypes.Ack, Is.EqualTo(4));
+                Assert.That((int)NetSdrMessageHelper.MsgTypes.DataItem1, Is.EqualTo(1));
+            });
+        }
+    }
+}
