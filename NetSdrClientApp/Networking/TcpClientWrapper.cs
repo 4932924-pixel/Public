@@ -10,13 +10,13 @@ using System.Threading.Tasks;
 
 namespace NetSdrClientApp.Networking
 {
-    public class TcpClientWrapper : ITcpClient
+    public class TcpClientWrapper : ITcpClient, IDisposable
     {
         private readonly string _host;
         private readonly int _port;
         private TcpClient? _tcpClient;
         private NetworkStream? _stream;
-        private CancellationTokenSource _cts;
+        private CancellationTokenSource? _cts;
 
         public bool Connected => _tcpClient != null && _tcpClient.Connected && _stream != null;
 
@@ -57,6 +57,7 @@ namespace NetSdrClientApp.Networking
             if (Connected)
             {
                 _cts?.Cancel();
+                _cts?.Dispose();
                 _stream?.Close();
                 _tcpClient?.Close();
 
@@ -116,6 +117,17 @@ namespace NetSdrClientApp.Networking
                             MessageReceived?.Invoke(this, buffer.AsSpan(0, bytesRead).ToArray());
                         }
                     }
+                    public void Dispose()
+        {
+            _cts?.Dispose();
+            _tcpClient?.Dispose();
+            _stream?.Dispose();
+            
+            // Garbage Collector буде вдячний
+            GC.SuppressFinalize(this); 
+        }
+    }
+}
                 }
                 catch (OperationCanceledException ex)
                 {
