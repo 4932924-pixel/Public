@@ -4,8 +4,10 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Linq;
 
 namespace EchoTcpServer
+{
 /// <summary>
 /// This program was designed for test purposes only
 /// Not for a review
@@ -60,7 +62,7 @@ public class EchoServer
                 while (!token.IsCancellationRequested && (bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, token)) > 0)
                 {
                     // Echo back the received message
-                    await stream.WriteAsync(buffer, 0, bytesRead, token);
+                    await stream.WriteAsync(buffer.AsMemory(0, bytesRead), token);
                     Console.WriteLine($"Echoed {bytesRead} bytes to the client.");
                 }
             }
@@ -137,9 +139,9 @@ public class UdpTimedSender : IDisposable
         _timer = new Timer(SendMessageCallback, null, 0, intervalMilliseconds);
     }
 
-    ushort i = 0;
+    
 
-    private void SendMessageCallback(object state)
+    private void SendMessageCallback(object? state)
     {
         try
         {
@@ -147,9 +149,9 @@ public class UdpTimedSender : IDisposable
             Random rnd = new Random();
             byte[] samples = new byte[1024];
             rnd.NextBytes(samples);
-            i++;
+          _messageIndex++;
 
-            byte[] msg = (new byte[] { 0x04, 0x84 }).Concat(BitConverter.GetBytes(i)).Concat(samples).ToArray();
+            byte[] msg = (new byte[] { 0x04, 0x84 }).Concat(BitConverter.GetBytes(_messageIndex)).Concat(samples).ToArray();
             var endpoint = new IPEndPoint(IPAddress.Parse(_host), _port);
 
             _udpClient.Send(msg, msg.Length, endpoint);
@@ -171,5 +173,7 @@ public class UdpTimedSender : IDisposable
     {
         StopSending();
         _udpClient.Dispose();
+        GC.SuppressFinalize(this);
     }
+}
 }
