@@ -5,15 +5,16 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
+namespace EchoTcpServer
 /// <summary>
 /// This program was designed for test purposes only
 /// Not for a review
 /// </summary>
-public class EchoServer
+public class EchoServer 
 {
     private readonly int _port;
-    private TcpListener _listener;
-    private CancellationTokenSource _cancellationTokenSource;
+    private TcpListener? _listener;
+    private readonly CancellationTokenSource _cancellationTokenSource;
 
 
     public EchoServer(int port)
@@ -47,7 +48,7 @@ public class EchoServer
         Console.WriteLine("Server shutdown.");
     }
 
-    private async Task HandleClientAsync(TcpClient client, CancellationToken token)
+    private static async Task HandleClientAsync(TcpClient client, CancellationToken token)
     {
         using (NetworkStream stream = client.GetStream())
         {
@@ -118,7 +119,8 @@ public class UdpTimedSender : IDisposable
     private readonly string _host;
     private readonly int _port;
     private readonly UdpClient _udpClient;
-    private Timer _timer;
+    private Timer? _timer;
+    private ushort _messageIndex = 0;
 
     public UdpTimedSender(string host, int port)
     {
