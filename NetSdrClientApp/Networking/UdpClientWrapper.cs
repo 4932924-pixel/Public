@@ -8,10 +8,9 @@ using System.Threading.Tasks;
 
 namespace NetSdrClientApp.Networking
 {
-    // Додано IDisposable для очищення ресурсів (_cts та _udpClient)
-    public class UdpClientWrapper : IUdpClient, IDisposable 
+    public class UdpClientWrapper : IUdpClient, IDisposable
     {
-        private readonly IPEndPoint _localEndPoint;
+        private readonly IPEndPoint _localEndPoint; // ДОДАНО: readonly
         private CancellationTokenSource? _cts;
         private UdpClient? _udpClient;
 
@@ -32,15 +31,18 @@ namespace NetSdrClientApp.Networking
                 _udpClient = new UdpClient(_localEndPoint);
                 while (!_cts.Token.IsCancellationRequested)
                 {
+                    // ВИПРАВЛЕНО: використання токена для коректної зупинки
                     UdpReceiveResult result = await _udpClient.ReceiveAsync(_cts.Token);
-                    MessageReceived?.Invoke(this, result.Buffer);
+                    
+                    var handler = MessageReceived;
+                    handler?.Invoke(this, result.Buffer);
 
                     Console.WriteLine($"Received from {result.RemoteEndPoint}");
                 }
             }
             catch (OperationCanceledException)
             {
-                // Очікувана зупинка при скасуванні токена
+                // Очікувана зупинка
             }
             catch (Exception ex)
             {
@@ -48,7 +50,7 @@ namespace NetSdrClientApp.Networking
             }
             finally
             {
-                StopListening(); // Гарантована зупинка при виході з циклу
+                StopListening();
             }
         }
 
@@ -68,11 +70,12 @@ namespace NetSdrClientApp.Networking
 
         public void Exit()
         {
-            StopListening(); // Викликаємо спільний метод замість дублювання коду
+            Dispose(); // ВИПРАВЛЕНО: замість дублювання викликаємо очищення
         }
 
         public override int GetHashCode()
         {
+            // ВИПРАВЛЕНО: SonarCloud рекомендує використовувати стабільні методи хешування
             var payload = $"{nameof(UdpClientWrapper)}|{_localEndPoint.Address}|{_localEndPoint.Port}";
 
             using var md5 = MD5.Create();
@@ -81,15 +84,21 @@ namespace NetSdrClientApp.Networking
             return BitConverter.ToInt32(hash, 0);
         }
 
-        // РЕАЛІЗАЦІЯ DISPOSE 
+        // ПРАВИЛЬНА РЕАЛІЗАЦІЯ IDisposable
         public void Dispose()
         {
-            _cts?.Cancel();
-            _cts?.Dispose();
-            _udpClient?.Dispose();
-            
-            // Повідомляємо Garbage Collector, що об'єкт вже очищено вручну
-            GC.SuppressFinalize(this);
+            Dispose(true);
+            GC.SuppressFinalize(this); // Повідомляємо GC, що об'єкт очищено
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _cts?.Cancel();
+                _cts?.Dispose();
+                _udpClient?.Dispose(); // Виправляє Blocker
+            }
         }
     }
 }
